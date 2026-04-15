@@ -1,0 +1,1243 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Century Estate | Redbank Plains</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300&family=Jost:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+
+    :root {
+      --navy:   #2A1A0E;
+      --blue:   #3A2418;
+      --mid:    #4D3020;
+      --soft:   #7A5540;
+      --lavender: #C8A882;
+      --light:  #E4DDD2;
+      --orange: #9B6B4A;
+      --orange2:#7A5038;
+      --white:  #FFFFFF;
+      --cream:  #F2EDE3;
+      --text-dim: rgba(242,237,227,0.72);
+      --text-soft: rgba(242,237,227,0.42);
+    }
+
+    html, body {
+      width:100%; height:100%; overflow:hidden;
+      background:#1A0F07;
+      display:flex; align-items:center; justify-content:center;
+      font-family:'Jost','PingFang SC','Microsoft YaHei',sans-serif;
+    }
+
+    /* Fixed 16:9 canvas */
+    #stage {
+      width:1440px; height:810px;
+      position:relative; overflow:hidden;
+      transform-origin:center center; flex-shrink:0;
+    }
+
+    /* Slide base */
+    .slide {
+      position:absolute; inset:0;
+      opacity:0; transform:translateX(52px);
+      transition:opacity .6s cubic-bezier(.4,0,.2,1), transform .6s cubic-bezier(.4,0,.2,1);
+      pointer-events:none;
+      display:flex; flex-direction:column; overflow:hidden;
+    }
+    .slide.active  { opacity:1; transform:translateX(0); pointer-events:all; }
+    .slide.exiting { opacity:0; transform:translateX(-52px); }
+
+    /* Chrome */
+    .progress-bar { position:fixed; top:0; left:0; height:3px; background:#C8A882; transition:width .5s ease; z-index:999; }
+    .slide-counter { position:fixed; top:18px; right:26px; color:rgba(232,213,192,.3); font-size:11px; letter-spacing:3px; z-index:999; font-weight:300; }
+    .nav-arrow {
+      position:fixed; top:50%; transform:translateY(-50%);
+      width:50px; height:50px; border:1px solid rgba(232,213,192,.2); border-radius:50%;
+      display:flex; align-items:center; justify-content:center; cursor:pointer;
+      z-index:999; background:rgba(42,26,14,.3); backdrop-filter:blur(8px);
+      color:rgba(232,213,192,.7); font-size:18px; transition:all .25s; user-select:none;
+    }
+    .nav-arrow:hover { background:rgba(155,107,74,.4); border-color:var(--orange); color:#fff; }
+    #prev { left:20px; } #next { right:20px; }
+    .nav-dots { position:fixed; bottom:22px; left:50%; transform:translateX(-50%); display:flex; gap:9px; z-index:999; }
+    .dot { width:7px; height:7px; border-radius:50%; background:rgba(232,213,192,.25); cursor:pointer; transition:all .3s; }
+    .dot.active { background:#C8A882; width:24px; border-radius:4px; }
+
+    /* Fortune Forward logo (top-right on every slide) */
+    .ff-logo {
+      position:absolute; top:22px; right:32px; z-index:10;
+      display:flex; align-items:center; gap:10px;
+    }
+    .ff-icon {
+      width:42px; height:42px; background:var(--orange);
+      border-radius:50%; display:flex; align-items:center; justify-content:center;
+      font-size:18px; font-weight:700; color:#fff; font-family:'Jost',sans-serif;
+    }
+    .ff-text { line-height:1.15; }
+    .ff-cn { font-size:14px; font-weight:500; color:#fff; letter-spacing:1px; }
+    .ff-en { font-size:9px; letter-spacing:2.5px; color:rgba(232,213,192,.5); text-transform:uppercase; }
+
+    /* Koya warm brown gradient backgrounds */
+    .bg-gradient {
+      background: linear-gradient(145deg, #2A1A0E 0%, #3A2418 35%, #4D3020 65%, #5A3828 100%);
+    }
+    .bg-gradient-soft {
+      background: linear-gradient(145deg, #301E10 0%, #422A18 40%, #553424 68%, #624030 100%);
+    }
+    .bg-dark-navy { background: #1E1008; }
+    .bg-cream { background: var(--cream); }
+    .bg-white { background: #fff; }
+
+    /* ── Typography ── */
+    .lbl { font-size:11px; letter-spacing:4px; text-transform:uppercase; font-weight:400; color:var(--orange); margin-bottom:16px; display:block; }
+    .lbl.dk { color:var(--orange2); }
+
+    .h1 { font-family:'Cormorant Garamond',Georgia,serif; font-weight:300; font-size:52px; line-height:1.18; color:#fff; margin-bottom:20px; }
+    .h1 em { font-style:italic; color:var(--orange); }
+    .h1.dk { color:var(--navy); }
+    .h1.dk em { color:var(--orange2); }
+
+    .rule { width:40px; height:2px; background:var(--orange); margin-bottom:20px; opacity:.9; }
+    .rule.dk { background:var(--orange2); }
+
+    .body-p { font-weight:300; font-size:15px; line-height:1.88; color:var(--text-dim); margin-bottom:12px; }
+    .body-p.dk { color:rgba(42,26,14,.68); }
+
+    /* Pills */
+    .pills { display:flex; flex-wrap:wrap; gap:10px; margin-top:22px; }
+    .pill { padding:8px 18px; border:1px solid rgba(155,107,74,.35); font-size:11px; font-weight:400; letter-spacing:1.8px; text-transform:uppercase; color:var(--orange); }
+    .pill.dk { border-color:rgba(58,36,24,.22); color:var(--blue); }
+
+    /* ═══════════════════
+       SLIDE 1 – COVER
+    ═══════════════════ */
+    .cover { align-items:center; justify-content:center; text-align:center; }
+    .cover-circles {
+      position:absolute; inset:0; pointer-events:none; overflow:hidden;
+    }
+    .cc { position:absolute; border-radius:50%; background:rgba(155,107,74,.08); }
+    .cc1 { width:420px; height:420px; top:-120px; left:-100px; }
+    .cc2 { width:300px; height:300px; bottom:-80px; right:-60px; }
+    .cc3 { width:180px; height:180px; bottom:60px; left:80px; background:rgba(155,107,74,.06); }
+
+    .cover-inner { position:relative; z-index:1; display:flex; flex-direction:column; align-items:center; }
+    .c-line { width:56px; height:1px; background:var(--orange); margin:18px auto; opacity:.6; }
+    .c-logo { font-family:'Cormorant Garamond',serif; font-size:108px; font-weight:300; color:#fff; letter-spacing:2px; line-height:1; }
+    .c-est { font-size:22px; letter-spacing:12px; text-transform:uppercase; color:rgba(232,213,192,.55); margin-top:4px; }
+    .c-tagline { font-family:'Cormorant Garamond',serif; font-style:italic; font-size:22px; color:rgba(232,213,192,.62); margin-top:4px; }
+    .c-sub { font-size:11px; letter-spacing:5px; text-transform:uppercase; color:rgba(232,213,192,.3); margin-top:22px; }
+    .c-addr { font-size:10px; letter-spacing:3px; text-transform:uppercase; color:rgba(232,213,192,.18); margin-top:6px; }
+
+    /* ═══════════════════
+       SLIDE 2 – PART MARKER
+    ═══════════════════ */
+    .part-slide { align-items:center; justify-content:center; text-align:center; }
+    .part-num { font-size:10px; letter-spacing:5px; text-transform:uppercase; color:var(--orange); margin-bottom:18px; }
+    .part-title { font-family:'Cormorant Garamond',serif; font-size:72px; font-weight:300; color:#fff; line-height:1.1; }
+    .part-rule { width:72px; height:1px; background:var(--orange); margin:22px auto; opacity:.5; }
+    .part-ff { font-size:13px; letter-spacing:4px; color:rgba(232,213,192,.35); text-transform:uppercase; display:flex; align-items:center; gap:14px; justify-content:center; }
+    .part-diamond { color:var(--orange); font-size:10px; }
+
+    /* ═══════════════════
+       SLIDE 3 – HOMECORP
+    ═══════════════════ */
+    .hc-wrap { flex:1; display:flex; }
+    .hc-left { width:42%; display:flex; flex-direction:column; justify-content:center; padding:64px 56px 64px 88px; }
+    .hc-right { flex:1; display:flex; flex-direction:column; justify-content:center; padding:56px 72px 56px 48px; gap:18px; }
+
+    .hc-brand { font-size:48px; font-weight:300; color:#fff; font-family:'Jost',sans-serif; letter-spacing:-1px; margin-bottom:6px; }
+    .hc-brand span { color:var(--orange); }
+    .hc-owned { font-size:12px; letter-spacing:1.5px; color:var(--text-dim); font-weight:300; margin-bottom:28px; }
+    .hc-parent { display:flex; gap:20px; margin-bottom:28px; }
+    .hc-tag { padding:8px 20px; border:1px solid rgba(155,107,74,.3); font-size:13px; font-weight:400; color:var(--orange); letter-spacing:1px; }
+
+    .stats-row { display:grid; grid-template-columns:repeat(3,1fr); gap:1px; background:rgba(232,213,192,.08); border:1px solid rgba(232,213,192,.08); }
+    .stat-box { background:rgba(42,26,14,.4); padding:22px 20px; text-align:center; }
+    .stat-n { font-family:'Cormorant Garamond',serif; font-size:46px; font-weight:300; color:#fff; line-height:1; }
+    .stat-u { font-size:16px; color:var(--orange); font-family:'Cormorant Garamond',serif; }
+    .stat-l { font-size:10px; letter-spacing:2px; text-transform:uppercase; color:rgba(232,213,192,.38); margin-top:6px; }
+
+    .hc-desc { font-size:13px; line-height:1.82; color:var(--text-dim); font-weight:300; }
+
+    /* ═══════════════════
+       SLIDE 4 – PROJECT INTRO
+    ═══════════════════ */
+    .intro-wrap { flex:1; display:flex; }
+    .intro-txt { width:46%; display:flex; flex-direction:column; justify-content:center; padding:64px 56px 64px 88px; }
+    .intro-img-col { flex:1; position:relative; overflow:hidden; }
+    .intro-img-col .img-main {
+      position:absolute; inset:0;
+      background:#1E1008;
+    }
+    #intro-loc-map { width:100%; height:100%; }
+    .intro-img-col .img-overlay {
+      position:absolute; inset:0; pointer-events:none;
+      background:linear-gradient(to right,rgba(42,26,14,.82) 0%,rgba(42,26,14,.05) 45%,transparent 100%);
+      z-index:2;
+    }
+    /* estate card over the image */
+    .estate-badge {
+      position:absolute; bottom:52px; right:52px; z-index:2;
+      background:rgba(42,26,14,.85); border:1px solid rgba(155,107,74,.35);
+      padding:28px 36px; backdrop-filter:blur(8px);
+    }
+    .eb-title { font-family:'Cormorant Garamond',serif; font-size:28px; color:#fff; font-weight:300; margin-bottom:14px; }
+    .eb-row { display:flex; justify-content:space-between; padding:7px 0; border-bottom:1px solid rgba(232,213,192,.07); }
+    .eb-k { font-size:10px; letter-spacing:2px; text-transform:uppercase; color:rgba(232,213,192,.38); }
+    .eb-v { font-size:13px; color:#fff; font-weight:300; }
+
+    /* ═══════════════════
+       SLIDE 5 – HIGHLIGHTS
+    ═══════════════════ */
+    .hi-wrap { flex:1; display:flex; flex-direction:column; justify-content:center; padding:52px 88px; }
+    .hi-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:20px; margin-top:32px; }
+    .hi-card { padding:28px 26px; border:1px solid rgba(232,213,192,.1); background:rgba(155,107,74,.06); position:relative; overflow:hidden; }
+    .hi-card::before { content:''; position:absolute; top:0; left:0; width:3px; height:100%; background:var(--orange); opacity:.6; }
+    .hi-icon { font-size:28px; margin-bottom:12px; display:block; }
+    .hi-title { font-size:11px; letter-spacing:3px; text-transform:uppercase; color:var(--orange); font-weight:500; margin-bottom:10px; }
+    .hi-body { font-size:13px; color:var(--text-dim); font-weight:300; line-height:1.78; }
+
+    /* ═══════════════════
+       SLIDE 6 – IPSWICH AREA
+    ═══════════════════ */
+    .area-wrap { flex:1; display:flex; }
+    .area-left { width:42%; display:flex; flex-direction:column; justify-content:center; padding:64px 56px 64px 88px; }
+    .area-right { flex:1; background:rgba(155,107,74,.06); border-left:1px solid rgba(232,213,192,.08); display:flex; flex-direction:column; }
+    .area-img-top {
+      flex:1;
+      background:linear-gradient(135deg,#2A1A0E 0%,#3A2418 100%);
+      position:relative; overflow:hidden;
+    }
+    .area-img-top .aerial {
+      position:absolute; inset:0; opacity:.5;
+      background:url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%"><rect fill="%232A1A0E" width="100%" height="100%"/></svg>');
+    }
+    .area-landmarks { padding:32px 44px; background:rgba(42,26,14,.6); }
+    .lm-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:12px; }
+    .lm-item { font-size:13px; color:var(--text-dim); font-weight:300; }
+
+    .score-row { display:flex; gap:14px; margin-top:22px; margin-bottom:6px; }
+    .score-box { flex:1; background:rgba(232,213,192,.06); border:1px solid rgba(232,213,192,.1); padding:18px; text-align:center; }
+    .score-n { font-family:'Cormorant Garamond',serif; font-size:46px; font-weight:300; color:var(--orange); line-height:1; }
+    .score-l { font-size:9px; letter-spacing:2.5px; text-transform:uppercase; color:var(--text-soft); margin-top:4px; }
+
+    /* ═══════════════════
+       SLIDE 7 – IPSWICH FAST FACTS
+    ═══════════════════ */
+    .facts-wrap { flex:1; display:flex; flex-direction:column; justify-content:center; padding:52px 88px; }
+    .facts-grid { display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-top:28px; }
+    .facts-big { grid-column:1/-1; text-align:center; padding:32px; border:1px solid rgba(155,107,74,.2); background:rgba(155,107,74,.04); margin-bottom:8px; }
+    .facts-huge { font-family:'Cormorant Garamond',serif; font-size:80px; font-weight:300; color:rgba(232,213,192,.12); line-height:1; }
+    .facts-label { font-size:13px; letter-spacing:3px; text-transform:uppercase; color:var(--orange); margin-top:4px; }
+
+    .fact-card { padding:24px 26px; border:1px solid rgba(232,213,192,.08); background:rgba(232,213,192,.03); }
+    .fact-num { font-family:'Cormorant Garamond',serif; font-size:52px; font-weight:300; color:#fff; line-height:1; }
+    .fact-unit { font-size:20px; color:var(--orange); font-family:'Cormorant Garamond',serif; }
+    .fact-pct { font-family:'Cormorant Garamond',serif; font-size:36px; color:var(--orange); }
+    .fact-desc { font-size:11px; letter-spacing:1.5px; text-transform:uppercase; color:rgba(232,213,192,.38); margin-top:6px; }
+
+    .infra-list { margin-top:20px; display:flex; flex-direction:column; gap:10px; }
+    .infra-row { display:flex; align-items:center; gap:14px; }
+    .infra-dot { width:8px; height:8px; border-radius:50%; background:var(--orange); flex-shrink:0; }
+    .infra-text { font-size:13px; color:var(--text-dim); font-weight:300; }
+    .infra-amt { font-size:14px; color:var(--orange); font-weight:500; margin-left:auto; flex-shrink:0; }
+
+    /* ═══════════════════
+       SLIDE 8 – SEQ INVESTMENT
+    ═══════════════════ */
+    .seq-wrap { flex:1; display:flex; }
+    .seq-left { width:48%; display:flex; flex-direction:column; justify-content:center; padding:64px 56px 64px 88px; }
+    .seq-right { flex:1; display:flex; flex-direction:column; justify-content:center; padding:56px 72px 56px 40px; gap:14px; }
+
+    .seq-grp { font-family:'Cormorant Garamond',serif; font-size:72px; font-weight:300; color:rgba(232,213,192,.14); line-height:1; margin-bottom:8px; }
+    .seq-grp-label { font-size:11px; letter-spacing:3px; text-transform:uppercase; color:var(--orange); margin-bottom:28px; }
+
+    .pop-row { display:flex; gap:14px; margin-top:20px; }
+    .pop-box { flex:1; border:1px solid rgba(155,107,74,.2); padding:18px; text-align:center; }
+    .pop-n { font-family:'Cormorant Garamond',serif; font-size:36px; font-weight:300; color:#fff; line-height:1.1; }
+    .pop-l { font-size:9px; letter-spacing:2px; text-transform:uppercase; color:rgba(232,213,192,.35); margin-top:5px; }
+
+    .invest-row { display:flex; align-items:center; gap:14px; padding:12px 18px; border-left:2px solid rgba(155,107,74,.4); background:rgba(232,213,192,.03); }
+    .invest-amt { font-size:18px; font-weight:500; color:var(--orange); min-width:80px; }
+    .invest-desc { font-size:13px; color:var(--text-dim); font-weight:300; line-height:1.5; }
+
+    /* ═══════════════════
+       SLIDE 9 – GROWTH DRIVERS
+    ═══════════════════ */
+    .growth-wrap { flex:1; display:flex; flex-direction:column; justify-content:center; padding:52px 88px; }
+    .growth-grid { display:grid; grid-template-columns:1fr 1fr; gap:22px; margin-top:28px; }
+    .growth-card { padding:28px 26px; border:1px solid rgba(232,213,192,.1); background:rgba(155,107,74,.06); }
+    .growth-title { font-size:11px; letter-spacing:3px; text-transform:uppercase; color:var(--orange); font-weight:500; margin-bottom:12px; }
+    .growth-big { font-family:'Cormorant Garamond',serif; font-size:42px; font-weight:300; color:#fff; line-height:1; margin-bottom:8px; }
+    .growth-body { font-size:13px; color:var(--text-dim); font-weight:300; line-height:1.75; }
+
+    /* ═══════════════════
+       SLIDE 10 – LOCATION
+    ═══════════════════ */
+    .loc-wrap { flex:1; display:flex; }
+    .loc-left { width:38%; display:flex; flex-direction:column; justify-content:center; padding:64px 52px 64px 88px; }
+    .loc-right { flex:1; display:flex; flex-direction:column; }
+    .loc-map { flex:1; background:linear-gradient(135deg,#2A1A0E 0%,#321C10 50%,#4A2A18 100%); position:relative; display:flex; align-items:center; justify-content:center; }
+    .loc-pin { text-align:center; }
+    .loc-pin-icon { width:56px; height:56px; background:var(--orange); border-radius:50% 50% 50% 0; transform:rotate(-45deg); margin:0 auto 16px; display:flex; align-items:center; justify-content:center; }
+    .loc-pin-dot { width:20px; height:20px; background:var(--navy); border-radius:50%; transform:rotate(45deg); }
+    .loc-pin-label { font-size:14px; letter-spacing:2px; color:var(--orange); text-transform:uppercase; }
+    .loc-pin-addr { font-size:11px; color:var(--text-dim); margin-top:4px; }
+
+    .loc-times { padding:28px 44px; background:rgba(42,26,14,.8); border-top:1px solid rgba(232,213,192,.06); display:grid; grid-template-columns:repeat(3,1fr); gap:0; }
+    .loc-time { text-align:center; padding:0 16px; border-right:1px solid rgba(232,213,192,.08); }
+    .loc-time:last-child { border-right:none; }
+    .lt-n { font-family:'Cormorant Garamond',serif; font-size:42px; color:#fff; font-weight:300; line-height:1; }
+    .lt-u { font-size:16px; color:var(--orange); }
+    .lt-l { font-size:9px; letter-spacing:2.5px; text-transform:uppercase; color:rgba(232,213,192,.35); margin-top:5px; }
+
+    .conn-list { display:flex; flex-direction:column; gap:12px; margin-top:22px; }
+    .conn-row { display:flex; align-items:center; gap:12px; }
+    .conn-dot { width:7px; height:7px; border-radius:50%; background:var(--orange); flex-shrink:0; }
+    .conn-text { font-size:13px; color:var(--text-dim); font-weight:300; }
+
+    /* ═══════════════════
+       SLIDE 11 – AMENITIES
+    ═══════════════════ */
+    .am-wrap { flex:1; display:flex; flex-direction:column; justify-content:center; padding:52px 88px; }
+    .am-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:18px; margin-top:28px; }
+    .am-card { padding:26px 22px; border:1px solid rgba(232,213,192,.09); background:rgba(232,213,192,.03); }
+    .am-title { font-size:11px; letter-spacing:3px; text-transform:uppercase; color:var(--orange); font-weight:500; margin-bottom:10px; }
+    .am-list { font-size:13px; color:var(--text-dim); font-weight:300; line-height:1.82; }
+
+    /* ═══════════════════
+       SLIDE 12 – CLOSING
+    ═══════════════════ */
+    .closing { align-items:center; justify-content:center; text-align:center; }
+    .cl-inner { position:relative; z-index:1; }
+    .cl-logo { font-family:'Cormorant Garamond',serif; font-size:88px; font-weight:300; color:#fff; letter-spacing:2px; line-height:1; margin-bottom:16px; }
+    .cl-est { font-size:20px; letter-spacing:10px; text-transform:uppercase; color:rgba(232,213,192,.45); }
+    .cl-rule { width:64px; height:1px; background:var(--orange); margin:20px auto; opacity:.5; }
+    .cl-tagline { font-family:'Cormorant Garamond',serif; font-style:italic; font-size:20px; color:rgba(232,213,192,.55); margin-bottom:28px; }
+    .cl-ff { display:flex; align-items:center; gap:16px; justify-content:center; margin-top:32px; }
+    .cl-ff-icon { width:48px; height:48px; background:var(--orange); border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:20px; font-weight:700; color:#fff; }
+    .cl-ff-text .cn { font-size:18px; font-weight:500; color:#fff; }
+    .cl-ff-text .en { font-size:10px; letter-spacing:3px; color:rgba(232,213,192,.4); text-transform:uppercase; }
+    .disc { font-size:10px; color:rgba(232,213,192,.18); max-width:560px; margin:32px auto 0; line-height:1.8; }
+
+    /* ── Font size bump (global small text) ── */
+    .lbl { font-size: 13px; }
+    .stat-l { font-size: 12px; }
+    .part-num { font-size: 12px; }
+    .conn-text { font-size: 15px; }
+    .body-p { font-size: 16px; }
+    .hc-desc { font-size: 14px; }
+    .am-title { font-size: 13px; }
+    .am-list { font-size: 14px; }
+    .hi-body { font-size: 14px !important; }
+    .pill { font-size: 13px; }
+    .ff-cn { font-size: 15px; }
+    .ff-en { font-size: 11px; }
+
+    /* ── Monochrome hi-icons (page 6) ── */
+    .hi-icon { display:block; width:40px; height:40px; margin-bottom:14px; color:var(--orange); }
+    .hi-icon svg { width:40px; height:40px; }
+
+    /* ═══════════════════
+       SLIDE 13 – MAP
+    ═══════════════════ */
+    .map-slide { flex-direction:row; }
+    .map-left { width:38%; display:flex; flex-direction:column; justify-content:center; padding:60px 48px 60px 88px; border-right:1px solid rgba(232,213,192,.07); flex-shrink:0; }
+    .map-right { flex:1; position:relative; overflow:hidden; background:#081030; }
+    .map-right img { height:100%; width:auto; position:absolute; left:50%; transform:translateX(-50%); display:block; }
+
+    .map-legend { margin-top:26px; display:flex; flex-direction:column; gap:16px; }
+    .map-leg-row { display:flex; align-items:center; gap:13px; }
+    .map-leg-dot { width:26px; height:26px; border-radius:50%; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:700; color:#fff; }
+    .map-leg-addr { font-size:13px; color:#fff; font-weight:400; margin-bottom:2px; }
+    .map-leg-price { font-size:11px; color:var(--orange); font-weight:300; letter-spacing:.5px; }
+
+    .map-pin {
+      position:absolute; transform:translate(-50%,-50%);
+      display:flex; flex-direction:column; align-items:center; pointer-events:none;
+    }
+    .map-pin-circle {
+      width:30px; height:30px; border-radius:50%;
+      display:flex; align-items:center; justify-content:center;
+      font-size:10px; font-weight:700; color:#fff;
+      border:2px solid rgba(232,213,192,.5);
+      box-shadow:0 0 0 5px rgba(232,213,192,.12), 0 2px 10px rgba(0,0,0,.5);
+    }
+    .map-pin-tag {
+      margin-top:5px; background:rgba(42,26,14,.88);
+      font-size:9px; letter-spacing:1.5px; color:#fff; padding:3px 9px; white-space:nowrap;
+      border:1px solid rgba(232,213,192,.12);
+    }
+
+    /* ═══════════════════
+       SLIDES 14-16 – LOT PACKAGES
+    ═══════════════════ */
+    .lot-slide { flex-direction:row; }
+    .lot-img-col { width:54%; position:relative; overflow:hidden; flex-shrink:0; }
+    .lot-img-col img { width:100%; height:100%; object-fit:cover; object-position:center top; display:block; }
+    .lot-img-overlay {
+      position:absolute; top:0; left:0; right:0; bottom:0;
+      background:linear-gradient(to right, transparent 55%, rgba(42,26,14,.6) 100%);
+    }
+    .lot-floor-corner {
+      position:absolute; bottom:26px; left:26px;
+      width:120px; background:rgba(42,26,14,.88); border:1px solid rgba(232,213,192,.1); padding:6px;
+    }
+    .lot-floor-corner img { width:100%; display:block; }
+    .lot-floor-corner-lbl { font-size:8px; letter-spacing:2px; text-transform:uppercase; color:rgba(232,213,192,.35); text-align:center; margin-top:3px; }
+
+    .lot-detail { flex:1; display:flex; flex-direction:column; justify-content:center; padding:48px 60px 48px 50px; overflow:hidden; }
+    .lot-stage-tag { font-size:14px; letter-spacing:4px; text-transform:uppercase; color:var(--orange); margin-bottom:14px; }
+    .lot-num { font-family:'Cormorant Garamond',serif; font-size:64px; font-weight:300; color:#fff; line-height:1; margin-bottom:2px; }
+    .lot-street { font-size:15px; letter-spacing:3px; color:rgba(232,213,192,.38); text-transform:uppercase; margin-bottom:6px; }
+    .lot-design-name { font-size:17px; color:var(--lavender); letter-spacing:2px; font-weight:400; text-transform:uppercase; margin-bottom:22px; border-top:1px solid rgba(232,213,192,.08); padding-top:14px; }
+
+    .price-table { border:1px solid rgba(232,213,192,.1); margin-bottom:20px; }
+    .price-row { display:flex; justify-content:space-between; align-items:center; padding:10px 16px; border-bottom:1px solid rgba(232,213,192,.07); }
+    .price-row:last-child { border-bottom:none; background:rgba(155,107,74,.1); }
+    .price-lbl { font-size:14px; letter-spacing:2.5px; text-transform:uppercase; color:rgba(232,213,192,.42); }
+    .price-row:last-child .price-lbl { color:var(--orange); font-weight:500; }
+    .price-val { font-family:'Cormorant Garamond',serif; font-size:24px; color:#fff; font-weight:300; }
+    .price-row:last-child .price-val { font-size:30px; color:var(--orange); }
+
+    .lot-specs-row { display:flex; align-items:center; gap:0; margin-bottom:18px; border:1px solid rgba(232,213,192,.1); }
+    .lot-spec-cell { flex:1; display:flex; flex-direction:column; align-items:center; padding:12px 8px; border-right:1px solid rgba(232,213,192,.07); }
+    .lot-spec-cell:last-child { border-right:none; }
+    .spec-n { font-family:'Cormorant Garamond',serif; font-size:30px; color:#fff; font-weight:300; line-height:1; }
+    .spec-lbl { font-size:13px; letter-spacing:2px; text-transform:uppercase; color:rgba(232,213,192,.35); margin-top:4px; }
+
+    .lot-promise-bar { font-size:13px; letter-spacing:1.5px; color:rgba(232,213,192,.28); text-transform:uppercase; padding-top:14px; border-top:1px solid rgba(232,213,192,.06); display:flex; gap:16px; flex-wrap:wrap; }
+    .lot-promise-bar span { padding:4px 10px; border:1px solid rgba(232,213,192,.1); }
+
+    /* ═══════════════════
+       LOT SLIDES – REDESIGNED
+    ═══════════════════ */
+    .lot2-slide { flex-direction:row; }
+    /* Left: specs panel — narrower */
+    .lot2-detail { width:28%; display:flex; flex-direction:column; justify-content:center; padding:42px 32px 42px 68px; border-right:1px solid rgba(232,213,192,.07); flex-shrink:0; overflow:hidden; }
+    /* Right: images — row: photos (center) | floor plan (periphery/right) */
+    .lot2-images { flex:1; display:flex; flex-direction:row; overflow:hidden; }
+    /* Center: exterior (top) + interior (bottom) stacked — takes priority visual space */
+    .lot2-photos { flex:1; display:flex; flex-direction:column; overflow:hidden; order:1; }
+    .lot2-top { flex:1; position:relative; overflow:hidden; border-bottom:1px solid rgba(232,213,192,.07); }
+    .lot2-top img { width:100%; height:100%; object-fit:cover; object-position:center top; display:block; }
+    .lot2-top::after { content:'房屋外观'; position:absolute; bottom:10px; right:12px; font-size:13px; letter-spacing:2px; color:rgba(232,213,192,.4); background:rgba(0,0,0,.5); padding:3px 9px; border-radius:2px; }
+    .lot2-interior { flex:1; position:relative; overflow:hidden; }
+    .lot2-interior img { width:100%; height:100%; object-fit:cover; object-position:center; display:block; }
+    .lot2-interior::after { content:'室内效果图'; position:absolute; bottom:10px; right:12px; font-size:13px; letter-spacing:2px; color:rgba(232,213,192,.4); background:rgba(0,0,0,.5); padding:3px 9px; border-radius:2px; }
+    /* Periphery right: floor plan — full height, no harsh top/bottom borders */
+    .lot2-floor { flex:0 0 42%; position:relative; overflow:hidden; order:2; border-left:1px solid rgba(232,213,192,.08); background:#1C0F07; display:flex; align-items:center; justify-content:center; padding:28px 22px; }
+    .lot2-floor img { max-width:100%; max-height:100%; object-fit:contain; display:block; }
+    .lot2-floor-lbl { position:absolute; bottom:8px; left:0; right:0; text-align:center; font-size:13px; letter-spacing:2.5px; text-transform:uppercase; color:rgba(232,213,192,.25); }
+
+    /* Leaflet map override */
+    .leaflet-container { background:#1E1008 !important; font-family:'Jost',sans-serif !important; }
+    #loc-map { width:100%; height:100%; }
+    .leaflet-lbl {
+      background:rgba(42,26,14,.82) !important;
+      border:1px solid rgba(155,107,74,.35) !important;
+      border-radius:3px !important;
+      color:rgba(232,213,192,.9) !important;
+      font-size:10px !important;
+      font-family:'Jost',sans-serif !important;
+      letter-spacing:1.5px !important;
+      text-transform:uppercase !important;
+      padding:3px 7px !important;
+      box-shadow:none !important;
+      white-space:nowrap !important;
+    }
+    .leaflet-lbl::before { display:none !important; }
+
+    /* ── BASE ANIMATIONS ── */
+    @keyframes fadeUp {
+      from { opacity:0; transform:translateY(18px); }
+      to   { opacity:1; transform:translateY(0); }
+    }
+    .slide.active .an { animation:fadeUp .68s cubic-bezier(.22,.61,.36,1) both; }
+    .slide.active .an-1 { animation-delay:.06s; }
+    .slide.active .an-2 { animation-delay:.18s; }
+    .slide.active .an-3 { animation-delay:.30s; }
+    .slide.active .an-4 { animation-delay:.44s; }
+    .slide.active .an-5 { animation-delay:.56s; }
+    .slide.active .an-6 { animation-delay:.68s; }
+
+    /* ── FANCY LOT SLIDE ANIMATIONS ── */
+    @keyframes lotTagFly {
+      from { opacity:0; transform:translateX(-28px) translateY(6px); letter-spacing:1px; }
+      to   { opacity:1; transform:translateX(0) translateY(0); }
+    }
+    @keyframes lotNumDrop {
+      0%   { opacity:0; transform:translateY(-36px) scale(.82); filter:blur(6px); }
+      60%  { opacity:1; transform:translateY(5px)  scale(1.03); filter:blur(0); }
+      100% { opacity:1; transform:translateY(0)    scale(1); }
+    }
+    @keyframes lotSlideLeft {
+      from { opacity:0; transform:translateX(-32px); }
+      to   { opacity:1; transform:translateX(0); }
+    }
+    @keyframes lotRevealName {
+      from { opacity:0; transform:scaleX(.55) translateX(-8px); transform-origin:left center; filter:blur(3px); }
+      to   { opacity:1; transform:scaleX(1) translateX(0); transform-origin:left center; filter:blur(0); }
+    }
+    @keyframes lotTableRise {
+      from { opacity:0; transform:translateY(26px); filter:blur(5px); }
+      to   { opacity:1; transform:translateY(0); filter:blur(0); }
+    }
+    @keyframes lotSpecPop {
+      0%   { opacity:0; transform:scale(.45) translateY(14px); }
+      68%  { opacity:1; transform:scale(1.09) translateY(-3px); }
+      100% { opacity:1; transform:scale(1) translateY(0); }
+    }
+    @keyframes lotBarGlow {
+      from { opacity:0; transform:translateY(14px); }
+      to   { opacity:1; transform:translateY(0); }
+    }
+    @keyframes lotImgRevealTop {
+      from { clip-path:inset(0 0 100% 0); transform:scale(1.08); }
+      to   { clip-path:inset(0 0 0% 0);   transform:scale(1); }
+    }
+    @keyframes lotImgRevealBot {
+      from { clip-path:inset(100% 0 0 0); transform:scale(1.08); }
+      to   { clip-path:inset(0 0 0% 0);   transform:scale(1); }
+    }
+    @keyframes lotFloorSlide {
+      from { opacity:0; transform:translateX(70px); filter:blur(4px); }
+      to   { opacity:1; transform:translateX(0);    filter:blur(0); }
+    }
+
+    /* Override generic .an for lot slides — each element gets its own motion */
+    .lot2-slide.active .lot-stage-tag   { animation: lotTagFly    .55s cubic-bezier(.22,.61,.36,1) .04s  both; }
+    .lot2-slide.active .lot-num         { animation: lotNumDrop   .80s cubic-bezier(.34,1.4,.64,1)  .12s  both; }
+    .lot2-slide.active .lot-street      { animation: lotSlideLeft .52s cubic-bezier(.22,.61,.36,1) .24s  both; }
+    .lot2-slide.active .lot-design-name { animation: lotRevealName .58s cubic-bezier(.22,.61,.36,1) .36s both; }
+    .lot2-slide.active .price-table     { animation: lotTableRise .65s cubic-bezier(.22,.61,.36,1) .46s  both; }
+    .lot2-slide.active .lot-specs-row   { animation: lotSpecPop   .65s cubic-bezier(.34,1.25,.64,1) .60s both; }
+    .lot2-slide.active .lot-promise-bar { animation: lotBarGlow   .52s ease                         .76s  both; }
+    /* Image panel entrances — no .an class needed */
+    .lot2-slide.active .lot2-top      { animation: lotImgRevealTop .90s cubic-bezier(.22,.61,.36,1) .08s both; }
+    .lot2-slide.active .lot2-interior { animation: lotImgRevealBot .90s cubic-bezier(.22,.61,.36,1) .34s both; }
+    .lot2-slide.active .lot2-floor    { animation: lotFloorSlide   .85s cubic-bezier(.22,.61,.36,1) .20s both; }
+  </style>
+</head>
+<body>
+
+<div class="progress-bar" id="progressBar"></div>
+<div class="slide-counter" id="counter">01 / 17</div>
+<button class="nav-arrow" id="prev">&#8592;</button>
+<button class="nav-arrow" id="next">&#8594;</button>
+<div class="nav-dots" id="dots"></div>
+
+<div id="stage">
+
+<!-- ░░ 01 COVER ░░ -->
+<div class="slide bg-gradient active">
+  <div class="cover-circles">
+    <div class="cc cc1"></div>
+    <div class="cc cc2"></div>
+    <div class="cc cc3"></div>
+  </div>
+  <div class="cover-inner" style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+    <span class="lbl an an-1" style="letter-spacing:6px">Presented by Fortune Forward</span>
+    <div class="c-logo an an-2">CENTURY</div>
+    <div class="c-est an an-2">E S T A T E</div>
+    <div class="c-line an an-3"></div>
+    <div class="c-tagline an an-3">绿意社区 · 连接城市</div>
+    <div class="c-sub an an-4">精选住宅地块 · 昆士兰 · Redbank Plains</div>
+    <div class="c-addr an an-5">Redbank Plains, Ipswich QLD · Presented by Homecorp</div>
+  </div>
+</div>
+
+<!-- ░░ 02 PART MARKER – 开发商介绍 ░░ -->
+<div class="slide bg-gradient-soft part-slide">
+  <div class="cover-circles"><div class="cc cc1"></div><div class="cc cc2"></div></div>
+  <div class="part-num an an-1">PART 01</div>
+  <div class="part-title an an-2">开发商介绍</div>
+  <div class="part-rule"></div>
+  <div class="part-ff an an-3"><span class="part-diamond">◆</span>Fortune Forward<span class="part-diamond">◆</span></div>
+</div>
+
+<!-- ░░ 03 HOMECORP PROFILE ░░ -->
+<div class="slide bg-dark-navy">
+  <div class="hc-wrap">
+    <div class="hc-left">
+      <span class="lbl an an-1">开发商介绍 · EST. 2004</span>
+      <!-- Homecorp logo — white card preserves original brand colors -->
+      <div class="an an-2" style="background:#fff;border-radius:8px;padding:0;margin:12px 0 14px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.25);height:190px;display:flex;align-items:center;justify-content:center;">
+        <img src="homecorp_logo.png" alt="Homecorp" style="width:80%;object-fit:contain;display:block;">
+      </div>
+      <div class="hc-parent an an-3" style="margin-bottom:0">
+        <div class="hc-tag">MISAWA HOMES</div>
+        <div class="hc-tag" style="border-color:rgba(232,213,192,.15);color:rgba(232,213,192,.4);font-size:11px;">战略合作 · 2018+</div>
+      </div>
+      <div class="rule an an-3"></div>
+      <!-- Vision -->
+      <div style="font-family:'Cormorant Garamond',serif;font-style:italic;font-size:17px;color:rgba(232,213,192,.75);line-height:1.6;margin-bottom:16px;" class="an an-4">"开发未来社区，让每个家庭都拥有归属感。"</div>
+      <p class="body-p an an-5" style="margin-bottom:14px">隶属 Prime Life Technologies（丰田 × 松下合资），引入日式精工理念，20 年来已在澳洲多州交付 3,100+ 套高品质住宅。</p>
+      <!-- Leadership portraits -->
+      <div class="an an-6" style="border-top:1px solid rgba(232,213,192,.08);padding-top:16px;">
+        <div style="font-size:11px;letter-spacing:3px;text-transform:uppercase;color:rgba(232,213,192,.28);margin-bottom:14px;">核心管理团队</div>
+        <div style="display:flex;gap:20px;">
+          <!-- Ron Bakir -->
+          <div style="display:flex;flex-direction:column;align-items:center;gap:11px;flex:1;">
+            <div style="width:136px;height:136px;border-radius:50%;overflow:hidden;border:2px solid rgba(155,107,74,.5);box-shadow:0 0 0 6px rgba(155,107,74,.1);">
+              <img src="https://homecorp.com/wp-content/uploads/2023/12/Ron-Bakir-Crop-Head-Shot.jpg" style="width:100%;height:100%;object-fit:cover;object-position:center top;">
+            </div>
+            <div style="text-align:center;">
+              <div style="font-size:14px;color:#fff;font-weight:500;line-height:1.3;">Ron Bakir</div>
+              <div style="font-size:12px;color:var(--orange);letter-spacing:1px;margin-top:3px;">CEO</div>
+            </div>
+          </div>
+          <!-- David McMahon -->
+          <div style="display:flex;flex-direction:column;align-items:center;gap:11px;flex:1;">
+            <div style="width:136px;height:136px;border-radius:50%;overflow:hidden;border:2px solid rgba(232,213,192,.18);box-shadow:0 0 0 6px rgba(155,107,74,.06);">
+              <img src="https://homecorp.com/wp-content/uploads/2023/12/David-McMahon-Crop-Headshot.jpg" style="width:100%;height:100%;object-fit:cover;object-position:center top;">
+            </div>
+            <div style="text-align:center;">
+              <div style="font-size:14px;color:#fff;font-weight:500;line-height:1.3;">David McMahon</div>
+              <div style="font-size:12px;color:rgba(232,213,192,.45);letter-spacing:1px;margin-top:3px;">COO</div>
+            </div>
+          </div>
+          <!-- Marc Fritzsche -->
+          <div style="display:flex;flex-direction:column;align-items:center;gap:11px;flex:1;">
+            <div style="width:136px;height:136px;border-radius:50%;overflow:hidden;border:2px solid rgba(232,213,192,.18);box-shadow:0 0 0 6px rgba(155,107,74,.06);">
+              <img src="https://homecorp.com/wp-content/uploads/2023/12/Marc-Crop-Headshot.jpg" style="width:100%;height:100%;object-fit:cover;object-position:center top;">
+            </div>
+            <div style="text-align:center;">
+              <div style="font-size:14px;color:#fff;font-weight:500;line-height:1.3;">Marc Fritzsche</div>
+              <div style="font-size:12px;color:rgba(232,213,192,.45);letter-spacing:1px;margin-top:3px;">执行总监</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="hc-right">
+      <div class="stats-row an an-2">
+        <div class="stat-box">
+          <div class="stat-n">165</div><div class="stat-l">名员工</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-n">24</div><div class="stat-l">个社区</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-n">20<span class="stat-u">+</span></div><div class="stat-l">年建造经验</div>
+        </div>
+      </div>
+      <div class="stats-row an an-3" style="margin-top:2px">
+        <div class="stat-box">
+          <div class="stat-n">5,200</div><div class="stat-l">已开发地块</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-n">3,100</div><div class="stat-l">已建房屋</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-n">$2.5<span class="stat-u">B</span></div><div class="stat-l">项目总价值</div>
+        </div>
+      </div>
+      <!-- 5-Star Promise -->
+      <div class="an an-4" style="margin-top:16px;border:1px solid rgba(155,107,74,.2);background:rgba(155,107,74,.04);padding:14px 18px;">
+        <div style="font-size:12px;letter-spacing:3px;text-transform:uppercase;color:var(--orange);margin-bottom:10px;font-weight:500">五星服务承诺 · 5 Star Promise</div>
+        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;text-align:center;">
+          <div style="font-size:11px;color:rgba(232,213,192,.6);line-height:1.4;">固定价格<br><span style="color:#fff;font-weight:500">保证</span></div>
+          <div style="font-size:11px;color:rgba(232,213,192,.6);line-height:1.4;">28天<br><span style="color:#fff;font-weight:500">开工保证</span></div>
+          <div style="font-size:11px;color:rgba(232,213,192,.6);line-height:1.4;">25周<br><span style="color:#fff;font-weight:500">竣工保证</span></div>
+          <div style="font-size:11px;color:rgba(232,213,192,.6);line-height:1.4;">7星<br><span style="color:#fff;font-weight:500">能耗评级</span></div>
+          <div style="font-size:11px;color:rgba(232,213,192,.6);line-height:1.4;">专属<br><span style="color:#fff;font-weight:500">客服服务</span></div>
+        </div>
+      </div>
+      <!-- Award + Japan tech -->
+      <div class="an an-5" style="margin-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <div style="padding:12px 16px;background:rgba(232,213,192,.03);border:1px solid rgba(232,213,192,.07);">
+          <div style="font-size:11px;color:var(--orange);letter-spacing:2px;margin-bottom:4px;">荣誉认可</div>
+          <div style="font-size:13px;color:#fff;font-weight:400;">2019 昆士兰独立屋</div>
+          <div style="font-size:13px;color:#fff;">前五大建筑商</div>
+        </div>
+        <div style="padding:12px 16px;background:rgba(232,213,192,.03);border:1px solid rgba(232,213,192,.07);">
+          <div style="font-size:11px;color:var(--orange);letter-spacing:2px;margin-bottom:4px;">日本智居技术</div>
+          <div style="font-size:13px;color:#fff;font-weight:400;">与 Misawa Homes</div>
+          <div style="font-size:13px;color:#fff;">战略合作 · 2018+</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ░░ 04 PART MARKER – 项目介绍 ░░ -->
+<div class="slide bg-gradient part-slide">
+  <div class="cover-circles"><div class="cc cc1"></div><div class="cc cc2"></div></div>
+  <div class="part-num an an-1">PART 02</div>
+  <div class="part-title an an-2">项目介绍</div>
+  <div class="part-rule"></div>
+  <div class="part-ff an an-3"><span class="part-diamond">◆</span>Century Estate · Redbank Plains<span class="part-diamond">◆</span></div>
+</div>
+
+<!-- ░░ 05 PROJECT INTRO ░░ -->
+<div class="slide bg-dark-navy">
+  <div class="intro-wrap">
+    <div class="intro-txt">
+      <span class="lbl an an-1">欢迎来到 Century Estate</span>
+      <h2 class="h1 an an-2">绿意之中<br><em>从容生活</em></h2>
+      <div class="rule an an-2"></div>
+      <p class="body-p an an-3">Century Estate 坐落于 Redbank Plains，毗邻广袤绿地与成熟公园，是昆士兰东南部增长最快地区之一的精心规划住宅社区。</p>
+      <p class="body-p an an-4">以区级体育综合体为核心，社区汇聚宽敞住宅地块、开放空间与休闲设施，同时享有便捷的周边生活配套，在宁静与便利之间找到完美平衡。</p>
+      <div class="pills an an-5">
+        <span class="pill">精选住宅地块</span>
+        <span class="pill">体育综合配套</span>
+        <span class="pill">家庭友好社区</span>
+        <span class="pill">多阶段开发</span>
+      </div>
+    </div>
+    <div class="intro-img-col">
+      <div class="img-main">
+        <div id="intro-loc-map"></div>
+      </div>
+      <div class="img-overlay"></div>
+      <div class="estate-badge an an-3">
+        <div class="eb-title">Century Estate</div>
+        <div class="eb-row"><span class="eb-k">位置</span><span class="eb-v">Redbank Plains, Ipswich QLD</span></div>
+        <div class="eb-row"><span class="eb-k">开发商</span><span class="eb-v">Homecorp</span></div>
+        <div class="eb-row"><span class="eb-k">社区类型</span><span class="eb-v">精品住宅地块社区</span></div>
+        <div class="eb-row"><span class="eb-k">至布里斯班</span><span class="eb-v">约 40 分钟车程</span></div>
+        <div class="eb-row" style="border-bottom:none"><span class="eb-k">配套</span><span class="eb-v">区级体育中心、学校、购物</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ░░ 06 ESTATE HIGHLIGHTS ░░ -->
+<div class="slide bg-gradient-soft">
+  <div class="hi-wrap">
+    <span class="lbl an an-1">项目亮点</span>
+    <h2 class="h1 an an-2">六大核心优势<br><em>成就理想家园</em></h2>
+    <div class="hi-grid an an-3">
+      <div class="hi-card">
+        <span class="hi-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.5-7-12a7 7 0 0 1 14 0c0 5.5-7 12-7 12z"/><circle cx="12" cy="9" r="2.5"/></svg></span>
+        <div class="hi-title">优越地理位置</div>
+        <div class="hi-body">位于 Redbank Plains 核心区域，昆士兰东南部增长最快地区之一，毗邻 Six Mile Creek 自然保护区。</div>
+      </div>
+      <div class="hi-card">
+        <span class="hi-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 17H3v-5l3-6h12l3 6v5h-2"/><circle cx="7.5" cy="17" r="2.5"/><circle cx="16.5" cy="17" r="2.5"/><path d="M5 12h14"/></svg></span>
+        <div class="hi-title">便捷交通连接</div>
+        <div class="hi-body">距布里斯班 CBD 约 40 分钟、黄金海岸约 60 分钟，经 Centenary Motorway 可轻松直达 Brisbane 及 Ipswich。</div>
+      </div>
+      <div class="hi-card">
+        <span class="hi-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="12" rx="10" ry="5.5"/><ellipse cx="12" cy="12" rx="5" ry="2.5"/><line x1="12" y1="6.5" x2="12" y2="17.5"/><line x1="2" y1="12" x2="22" y2="12"/></svg></span>
+        <div class="hi-title">区级体育综合体</div>
+        <div class="hi-body">社区核心配套区级体育中心，含板球场、网球场及俱乐部会所，传承 75 年本地体育历史。</div>
+      </div>
+      <div class="hi-card">
+        <span class="hi-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5L12 3l9 7.5V20a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V10.5z"/><path d="M9 21V13h6v8"/></svg></span>
+        <div class="hi-title">精选户型配置</div>
+        <div class="hi-body">每块地块均已预先配对最适合的房屋设计方案、外立面处理及色彩搭配，一站式交付。</div>
+      </div>
+      <div class="hi-card">
+        <span class="hi-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><path d="M12 2C8 7 8 17 12 22"/><path d="M12 2c4 5 4 15 0 20"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="17" x2="20" y2="17"/></svg></span>
+        <div class="hi-title">生态绿色环境</div>
+        <div class="hi-body">被成熟绿地、公园与步行道环绕，远离喧嚣又不失城市便利，打造宁静舒适的居住体验。</div>
+      </div>
+      <div class="hi-card">
+        <span class="hi-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/><circle cx="12" cy="12" r="4"/></svg></span>
+        <div class="hi-title">完善市政配套</div>
+        <div class="hi-body">市政自来水、排污及电力均已准备就绪，可直接开始建设，无后顾之忧。</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ░░ 07 PART MARKER – 区域分析 ░░ -->
+<div class="slide bg-gradient part-slide">
+  <div class="cover-circles"><div class="cc cc1"></div><div class="cc cc2"></div></div>
+  <div class="part-num an an-1">PART 03</div>
+  <div class="part-title an an-2">区域分析</div>
+  <div class="part-rule"></div>
+  <div class="part-ff an an-3"><span class="part-diamond">◆</span>Ipswich · South East Queensland<span class="part-diamond">◆</span></div>
+</div>
+
+<!-- ░░ 08 IPSWICH FAST FACTS ░░ -->
+<div class="slide bg-dark-navy">
+  <div class="facts-wrap">
+    <span class="lbl an an-1">伊普斯威奇 · IPSWICH</span>
+    <h2 class="h1 an an-2">澳大利亚增长最快<br><em>的城市之一</em></h2>
+    <div class="facts-grid an an-3">
+      <div class="fact-card">
+        <div class="fact-num">251,148</div>
+        <div class="fact-desc">2023 年人口</div>
+        <div style="margin-top:14px">
+          <div class="fact-pct">471,033</div>
+          <div class="fact-desc">2031 年预测人口</div>
+        </div>
+      </div>
+      <div class="fact-card">
+        <div class="fact-num" style="font-size:66px">87.55<span class="fact-unit">%</span></div>
+        <div class="fact-desc">2023–2031 人口增长预测</div>
+        <div style="margin-top:14px">
+          <div style="font-size:13px;color:var(--text-dim);font-weight:300">全昆士兰增速同期仅 4.14%</div>
+        </div>
+      </div>
+      <div class="fact-card" style="grid-column:1/-1">
+        <div class="infra-list">
+          <div style="font-size:11px;letter-spacing:3px;text-transform:uppercase;color:var(--orange);margin-bottom:8px">重大基础设施投资</div>
+          <div class="infra-row"><div class="infra-dot"></div><div class="infra-text">$27.75B 以上重大项目总投资</div><div class="infra-amt">$27.75B+</div></div>
+          <div class="infra-row"><div class="infra-dot"></div><div class="infra-text">伊普斯威奇经济发展战略新增就业</div><div class="infra-amt">11,500 个</div></div>
+          <div class="infra-row"><div class="infra-dot"></div><div class="infra-text">Warrego 高速公路扩建（建设中）</div><div class="infra-amt">$1.88B</div></div>
+          <div class="infra-row"><div class="infra-dot"></div><div class="infra-text">伊普斯威奇医院扩建（建设中）</div><div class="infra-amt">$710M</div></div>
+          <div class="infra-row"><div class="infra-dot"></div><div class="infra-text">内陆铁路（规划中）</div><div class="infra-amt">$2.35B+</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ░░ 09 SEQ INVESTMENT ░░ -->
+<div class="slide bg-gradient-soft">
+  <div class="seq-wrap">
+    <div class="seq-left">
+      <span class="lbl an an-1">SEQ 区域经济</span>
+      <div class="seq-grp an an-2">$306.9B</div>
+      <div class="seq-grp-label an an-2">2023 年区域生产总值 (GRP)</div>
+      <div class="rule an an-2"></div>
+      <p class="body-p an an-3">昆士兰东南部（SEQ）面积 35,248 km²，是澳大利亚经济最活跃的区域之一，2022–23 年经济增速达 3.4%。</p>
+      <div class="pop-row an an-4">
+        <div class="pop-box">
+          <div class="pop-n">4,016,559</div>
+          <div class="pop-l">2023 年人口</div>
+        </div>
+        <div class="pop-box">
+          <div class="pop-n">5,940,000</div>
+          <div class="pop-l">2046 年预测人口</div>
+        </div>
+      </div>
+      <div style="margin-top:16px;padding:16px 20px;border:1px solid rgba(155,107,74,.2);background:rgba(155,107,74,.04);" class="an an-5">
+        <div style="font-size:11px;letter-spacing:2.5px;text-transform:uppercase;color:var(--orange);margin-bottom:6px">2046 年新增住宅需求</div>
+        <div style="font-family:'Cormorant Garamond',serif;font-size:48px;font-weight:300;color:#fff;line-height:1">900,000 <span style="font-size:20px;color:var(--orange)">套</span></div>
+        <div style="font-size:12px;color:var(--text-dim);margin-top:4px">每年约需新建 34,500 套住宅</div>
+      </div>
+    </div>
+    <div class="seq-right">
+      <div class="lbl an an-1">重大基础设施项目</div>
+      <div class="invest-row an an-2"><div class="invest-amt">$1.8B</div><div class="invest-desc">SEQ 基础设施总投资</div></div>
+      <div class="invest-row an an-3"><div class="invest-amt">$450M</div><div class="invest-desc">Woolloongabba 火车站升级</div></div>
+      <div class="invest-row an an-3"><div class="invest-amt">$285.8M</div><div class="invest-desc">SEQ 宜居基金</div></div>
+      <div class="invest-row an an-4"><div class="invest-amt">$210M</div><div class="invest-desc">增长区域紧凑型开发</div></div>
+      <div class="invest-row an an-4"><div class="invest-amt">$190.2M</div><div class="invest-desc">袋鼠角绿色大桥</div></div>
+      <div class="invest-row an an-5"><div class="invest-amt">$150M</div><div class="invest-desc">SEQ 创新经济基金</div></div>
+      <div style="margin-top:18px;padding:18px 20px;background:rgba(42,26,14,.5);border:1px solid rgba(232,213,192,.08);" class="an an-5">
+        <div style="font-size:10px;letter-spacing:3px;text-transform:uppercase;color:var(--orange);margin-bottom:8px">昆士兰经济增长</div>
+        <div style="font-size:14px;color:#fff;font-weight:400">4.4% (2021-22) · 2.3% (2022-23) · 3% (2023-24 & 25)</div>
+        <div style="font-size:12px;color:var(--text-dim);margin-top:8px">4 年资本计划总额 $107.262 亿澳元，支持 72,000 个就业岗位</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ░░ 10 GROWTH DRIVERS ░░ -->
+<div class="slide bg-dark-navy">
+  <div class="growth-wrap">
+    <span class="lbl an an-1">增长驱动因素</span>
+    <h2 class="h1 an an-2">多重利好叠加<br><em>价值持续提升</em></h2>
+    <div class="growth-grid an an-3">
+      <div class="growth-card">
+        <div class="growth-title">2032 布里斯班奥运会</div>
+        <div class="growth-big">$8.1B</div>
+        <div class="growth-body">布里斯班荣获 2032 年奥运会主办权，预计为昆士兰带来 81 亿澳元综合效益，含 46 亿旅游贸易促进及 35 亿社会效益。</div>
+      </div>
+      <div class="growth-card">
+        <div class="growth-title">Cross River Rail 跨河铁路</div>
+        <div class="growth-big">$15–20B</div>
+        <div class="growth-body">每年为昆士兰生产总值带来 150–200 亿澳元的直接及间接经济效益，历时 20–30 年，同时创造多达 35,000 个就业岗位。Roma Street 新"大中央站"将服务每日 46,320 名旅客。</div>
+      </div>
+      <div class="growth-card">
+        <div class="growth-title">太平洋高速公路升级</div>
+        <div class="growth-big">$5.2183B</div>
+        <div class="growth-body">M1 高速公路 11 项升级工程，每日可承载 60,000–170,000 辆车流量，显著改善昆士兰南部区域的交通效率与通达性。</div>
+      </div>
+      <div class="growth-card">
+        <div class="growth-title">Coomera Connector 连接道路</div>
+        <div class="growth-big">$2.16B</div>
+        <div class="growth-body">Stage 1 已于 2023 年开工，全长 16km，设计 4 车道（未来可扩至 6 车道），极大缩短黄金海岸至布里斯班走廊的通行时间。</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ░░ 11 LOCATION ░░ -->
+<div class="slide bg-gradient-soft">
+  <div class="loc-wrap">
+    <div class="loc-left">
+      <span class="lbl an an-1">地理位置</span>
+      <h2 class="h1 an an-2" style="font-size:44px">连接三大<br><em>都市圈</em></h2>
+      <div class="rule an an-2"></div>
+      <p class="body-p an an-3">Redbank Plains 地处昆士兰东南部战略要地，经 Centenary Motorway 可快速通达布里斯班、伊普斯威奇及黄金海岸，兼顾城市与自然的双重优势。</p>
+      <div class="conn-list an an-4">
+        <div class="conn-row"><div class="conn-dot"></div><div class="conn-text">紧邻 Centenary Motorway 出入口</div></div>
+        <div class="conn-row"><div class="conn-dot"></div><div class="conn-text">距布里斯班机场约 45 分钟</div></div>
+        <div class="conn-row"><div class="conn-dot"></div><div class="conn-text">Town Square Redbank Plains 购物中心步行可达</div></div>
+        <div class="conn-row"><div class="conn-dot"></div><div class="conn-text">Woolworths Collingwood Park 咖啡馆、学校一应俱全</div></div>
+        <div class="conn-row"><div class="conn-dot"></div><div class="conn-text">周边公交 & 火车站连接全城</div></div>
+      </div>
+    </div>
+    <div class="loc-right">
+      <div class="loc-map" style="padding:0;overflow:hidden;position:relative;">
+        <div id="loc-map" style="width:100%;height:100%;"></div>
+        <!-- Distance overlay -->
+        <div style="position:absolute;bottom:0;left:0;right:0;z-index:500;background:linear-gradient(transparent,rgba(42,26,14,.92));padding:18px 22px 16px;">
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0;text-align:center;">
+            <div style="border-right:1px solid rgba(232,213,192,.12);padding:0 10px;">
+              <div style="font-family:'Cormorant Garamond',serif;font-size:28px;color:#fff;font-weight:300;line-height:1">40<span style="font-size:14px;color:var(--orange)">min</span></div>
+              <div style="font-size:11px;letter-spacing:2px;text-transform:uppercase;color:rgba(232,213,192,.45);margin-top:3px">布里斯班 CBD</div>
+            </div>
+            <div style="border-right:1px solid rgba(232,213,192,.12);padding:0 10px;">
+              <div style="font-family:'Cormorant Garamond',serif;font-size:28px;color:#fff;font-weight:300;line-height:1">15<span style="font-size:14px;color:var(--orange)">min</span></div>
+              <div style="font-size:11px;letter-spacing:2px;text-transform:uppercase;color:rgba(232,213,192,.45);margin-top:3px">伊普斯威奇</div>
+            </div>
+            <div style="padding:0 10px;">
+              <div style="font-family:'Cormorant Garamond',serif;font-size:28px;color:#fff;font-weight:300;line-height:1">60<span style="font-size:14px;color:var(--orange)">min</span></div>
+              <div style="font-size:11px;letter-spacing:2px;text-transform:uppercase;color:rgba(232,213,192,.45);margin-top:3px">黄金海岸</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ░░ 12 CLOSING ░░ -->
+<!-- ══════════════════════════════════════
+     SLIDE 13 – PART 04 MARKER
+══════════════════════════════════════ -->
+<div class="slide bg-gradient part-slide">
+  <div class="part-num an an-1">PART 04</div>
+  <div class="part-title an an-2">在售房源</div>
+  <div class="part-rule an an-3"></div>
+  <div class="part-ff an an-4"><span class="part-diamond">◆</span> Stage 4 · 第四期 · Redbank Plains <span class="part-diamond">◆</span></div>
+</div>
+
+<!-- ══════════════════════════════════════
+     SLIDE 14 – ESTATE MAP
+══════════════════════════════════════ -->
+<div class="slide bg-dark-navy map-slide">
+  <div class="map-left">
+    <span class="lbl an an-1">第四期 · STAGE 4</span>
+    <div class="h1 an an-2">小区<br><em>地图</em></div>
+    <div class="rule an an-2"></div>
+    <p class="body-p an an-3">以下两套均为第四期在售精选房源，紧邻社区运动公园，成熟配套，自住投资两相宜。</p>
+    <div class="map-legend an an-4">
+      <div class="map-leg-row">
+        <div class="map-leg-dot" style="background:#E05A00;">243</div>
+        <div>
+          <div class="map-leg-addr">Lot 243 · Healy Circuit</div>
+          <div class="map-leg-price">$1,019,900 · ROSEDALE · 土地 450m²</div>
+        </div>
+      </div>
+      <div class="map-leg-row">
+        <div class="map-leg-dot" style="background:#1A7A4A;">267</div>
+        <div>
+          <div class="map-leg-addr">Lot 267 · Healy Circuit</div>
+          <div class="map-leg-price">$1,199,900 · NORFOLK · 土地 525m²</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="map-right">
+    <img src="stage4_map.jpg" alt="Century Estate Stage 4 Map" style="width:100%;height:100%;object-fit:contain;object-position:center;background:#e8e0d4;">
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     SLIDE 15 – LOT 243
+══════════════════════════════════════ -->
+<div class="slide bg-dark-navy lot2-slide">
+  <div class="lot2-detail">
+    <div class="lot-stage-tag an an-1">STAGE 4 · HEALY CIRCUIT</div>
+    <div class="lot-num an an-2">LOT 243</div>
+    <div class="lot-street an an-2">Healy Circuit, Redbank Plains QLD 4301</div>
+    <div class="lot-design-name an an-3">ROSEDALE 户型</div>
+    <div class="price-table an an-4">
+      <div class="price-row">
+        <span class="price-lbl">土地 · 450 m²</span>
+        <span class="price-val">$525,900</span>
+      </div>
+      <div class="price-row">
+        <span class="price-lbl">建筑 · 193.39 m²</span>
+        <span class="price-val">$494,000</span>
+      </div>
+      <div class="price-row">
+        <span class="price-lbl">套装总价</span>
+        <span class="price-val">$1,019,900</span>
+      </div>
+    </div>
+    <div class="lot-specs-row an an-5">
+      <div class="lot-spec-cell"><span class="spec-n">4</span><span class="spec-lbl">卧室</span></div>
+      <div class="lot-spec-cell"><span class="spec-n">2</span><span class="spec-lbl">卫浴</span></div>
+      <div class="lot-spec-cell"><span class="spec-n">2</span><span class="spec-lbl">车位</span></div>
+      <div class="lot-spec-cell"><span class="spec-n">7★</span><span class="spec-lbl">能耗</span></div>
+    </div>
+    <div class="lot-promise-bar an an-6">
+      <span>固定价格</span><span>28天开工</span><span>25周竣工</span>
+    </div>
+  </div>
+  <div class="lot2-images">
+    <div class="lot2-floor">
+      <img src="lot243_floor.jpg" alt="Floor Plan">
+      <div class="lot2-floor-lbl">户型图</div>
+    </div>
+    <div class="lot2-photos">
+      <div class="lot2-top">
+        <img src="lot243_exterior.jpg" alt="Lot 243 Exterior">
+      </div>
+      <div class="lot2-interior">
+        <img src="lot243_living.jpg" alt="Interior">
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     SLIDE 16 – LOT 267
+══════════════════════════════════════ -->
+<div class="slide bg-dark-navy lot2-slide">
+  <div class="lot2-detail">
+    <div class="lot-stage-tag an an-1">STAGE 4 · HEALY CIRCUIT</div>
+    <div class="lot-num an an-2">LOT 267</div>
+    <div class="lot-street an an-2">Healy Circuit, Redbank Plains QLD 4301</div>
+    <div class="lot-design-name an an-3">NORFOLK 户型</div>
+    <div class="price-table an an-4">
+      <div class="price-row">
+        <span class="price-lbl">土地 · 525 m²</span>
+        <span class="price-val">$567,500</span>
+      </div>
+      <div class="price-row">
+        <span class="price-lbl">建筑 · 231.85 m²</span>
+        <span class="price-val">$632,400</span>
+      </div>
+      <div class="price-row">
+        <span class="price-lbl">套装总价</span>
+        <span class="price-val">$1,199,900</span>
+      </div>
+    </div>
+    <div class="lot-specs-row an an-5">
+      <div class="lot-spec-cell"><span class="spec-n">5</span><span class="spec-lbl">卧室</span></div>
+      <div class="lot-spec-cell"><span class="spec-n">3</span><span class="spec-lbl">卫浴</span></div>
+      <div class="lot-spec-cell"><span class="spec-n">2</span><span class="spec-lbl">车位</span></div>
+      <div class="lot-spec-cell"><span class="spec-n">7★</span><span class="spec-lbl">能耗</span></div>
+    </div>
+    <div class="lot-promise-bar an an-6">
+      <span>固定价格</span><span>28天开工</span><span>25周竣工</span>
+    </div>
+  </div>
+  <div class="lot2-images">
+    <div class="lot2-floor">
+      <img src="lot267_floor.jpg" alt="Floor Plan">
+      <div class="lot2-floor-lbl">户型图</div>
+    </div>
+    <div class="lot2-photos">
+      <div class="lot2-top">
+        <img src="lot267_exterior.jpg" alt="Lot 267 Exterior">
+      </div>
+      <div class="lot2-interior">
+        <img src="lot267_living.jpg" alt="Interior">
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide bg-gradient closing">
+  <div class="cover-circles"><div class="cc cc1"></div><div class="cc cc2"></div><div class="cc cc3"></div></div>
+  <div class="cl-inner">
+    <div class="cl-logo an an-1">CENTURY</div>
+    <div class="cl-est an an-1">E S T A T E</div>
+    <div class="cl-rule an an-2"></div>
+    <div class="cl-tagline an an-2">绿意社区 · 连接城市 · 价值之选</div>
+    <p class="disc an an-4">本资料仅供参考，所有信息、价格及规格可能随时变更，恕不另行通知。效果图及数据均来源于公开资料，实际情况可能有所差异。投资房产存在风险，请在专业顾问的指导下作出决策。</p>
+  </div>
+</div>
+
+</div><!-- end #stage -->
+
+<script>
+  const slides = document.querySelectorAll('.slide');
+  const total = slides.length;
+  let current = 0;
+
+  // Build dots
+  const dotsEl = document.getElementById('dots');
+  slides.forEach((_, i) => {
+    const d = document.createElement('div');
+    d.className = 'dot' + (i === 0 ? ' active' : '');
+    d.addEventListener('click', () => goTo(i));
+    dotsEl.appendChild(d);
+  });
+
+  // Mini map: Redbank Plains location context (slide 05)
+  let introMap = null;
+  function initIntroMap() {
+    if (introMap) return;
+    const el = document.getElementById('intro-loc-map');
+    if (!el) return;
+    introMap = L.map('intro-loc-map', { zoomControl:false, attributionControl:false, dragging:false, scrollWheelZoom:false }).setView([-27.648, 152.920], 12);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom:19 }).addTo(introMap);
+    // Redbank Plains suburb boundary circle (~1800m matches actual QLD 4301 suburb extent)
+    L.circle([-27.648, 152.838], { radius:1800, color:'rgba(155,107,74,.55)', fillColor:'rgba(155,107,74,.12)', fillOpacity:1, weight:1.5 }).addTo(introMap);
+    // Glowing pin for Redbank Plains / Century Estate
+    const rbIcon = L.divIcon({
+      html: '<div style="width:16px;height:16px;background:#9B6B4A;border-radius:50%;border:2.5px solid #fff;box-shadow:0 0 0 7px rgba(155,107,74,.28),0 0 22px rgba(155,107,74,.55);"></div>',
+      iconSize:[16,16], iconAnchor:[8,8], className:''
+    });
+    L.marker([-27.648, 152.838], {icon:rbIcon}).bindTooltip('Redbank Plains',{permanent:true,direction:'right',className:'leaflet-lbl',offset:[7,0]}).addTo(introMap);
+  }
+  const INTRO_SLIDE_IDX = 4;
+
+  // Leaflet map: Redbank Plains QLD
+  let leafletMap = null;
+  function initLocMap() {
+    if (leafletMap) return;
+    const el = document.getElementById('loc-map');
+    if (!el) return;
+    leafletMap = L.map('loc-map', { zoomControl:false, attributionControl:false }).setView([-27.648, 152.870], 10);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      maxZoom:19
+    }).addTo(leafletMap);
+    const icon = L.divIcon({
+      html: '<div style="width:18px;height:18px;background:#9B6B4A;border-radius:50%;border:3px solid #fff;box-shadow:0 0 0 5px rgba(155,107,74,.35),0 2px 8px rgba(0,0,0,.6);"></div>',
+      iconSize:[18,18], iconAnchor:[9,9], className:''
+    });
+    L.marker([-27.648, 152.870], {icon}).bindPopup('<b style="font-family:sans-serif;font-size:13px">Century Estate</b><br><span style="font-size:11px;color:#666">Redbank Plains, QLD 4301</span>').addTo(leafletMap);
+    // Brisbane
+    L.circleMarker([-27.467, 153.024], {radius:6, color:'rgba(232,213,192,.4)', fill:true, fillColor:'rgba(232,213,192,.25)', fillOpacity:1, weight:1}).bindTooltip('Brisbane CBD',{permanent:true,direction:'right',className:'leaflet-lbl'}).addTo(leafletMap);
+    // Ipswich
+    L.circleMarker([-27.614, 152.760], {radius:5, color:'rgba(232,213,192,.3)', fill:true, fillColor:'rgba(232,213,192,.15)', fillOpacity:1, weight:1}).bindTooltip('Ipswich',{permanent:true,direction:'left',className:'leaflet-lbl'}).addTo(leafletMap);
+    // Gold Coast
+    L.circleMarker([-28.017, 153.430], {radius:5, color:'rgba(232,213,192,.3)', fill:true, fillColor:'rgba(232,213,192,.15)', fillOpacity:1, weight:1}).bindTooltip('Gold Coast',{permanent:true,direction:'right',className:'leaflet-lbl'}).addTo(leafletMap);
+
+    // ── Highway label badge helper ──────────────────────────────────────
+    function hwLabel(code, name) {
+      return L.divIcon({
+        html: `<div style="display:inline-flex;align-items:center;gap:4px;background:rgba(20,10,4,.78);border:1px solid rgba(255,255,255,.25);border-radius:3px;padding:2px 6px 2px 4px;box-shadow:0 1px 5px rgba(0,0,0,.6)">
+          <span style="background:#fff;color:#1a0f07;font-family:'Jost',sans-serif;font-size:8px;font-weight:800;padding:1px 4px;border-radius:2px;letter-spacing:.5px">${code}</span>
+          <span style="color:rgba(255,255,255,.82);font-family:'Jost',sans-serif;font-size:8px;letter-spacing:.6px;white-space:nowrap">${name}</span>
+        </div>`,
+        iconSize:[1,1], iconAnchor:[0,0], className:''
+      });
+    }
+
+    const hw  = {color:'rgba(255,255,255,.70)', weight:2.5, opacity:1};
+
+    // Ipswich Motorway (A2) — 174条OSM路段按经度排序（Brisbane→Ipswich）
+    L.polyline([
+      [-27.4680,152.9950],[-27.4940,152.9840],[-27.5200,152.9700],
+      [-27.5546,153.0090],[-27.5573,153.0065],[-27.5606,152.9972],
+      [-27.5645,152.9890],[-27.5675,152.9740],[-27.5719,152.9596],
+      [-27.5759,152.9474],[-27.5812,152.9357],[-27.5871,152.9281],
+      [-27.5961,152.9222],[-27.6018,152.9200],[-27.6080,152.9112],
+      [-27.6090,152.9075],[-27.6094,152.9032],[-27.6055,152.8943],
+      [-27.6028,152.8883],[-27.6013,152.8824],[-27.6044,152.8666],
+      [-27.6003,152.8576],[-27.5975,152.8535],
+      [-27.6100,152.8200],[-27.6140,152.7900],[-27.6140,152.7600]
+    ], hw).addTo(leafletMap);
+    L.marker([-27.554, 152.996], {icon: hwLabel('A2','Ipswich Motorway')}).addTo(leafletMap);
+
+    // Centenary Highway (A5) — 190条OSM路段精确还原
+    // 北段：Darra/Wacol交汇口 → 南穿Springfield走廊
+    L.polyline([
+      [-27.5107,152.9585],[-27.5175,152.9551],[-27.5206,152.9488],
+      [-27.5351,152.9467],[-27.5469,152.9417],[-27.5556,152.9404],
+      [-27.5737,152.9447],[-27.5819,152.9475],[-27.5927,152.9481],
+      [-27.6042,152.9441],[-27.6116,152.9434],[-27.6202,152.9422],
+      [-27.6245,152.9411],[-27.6345,152.9396],
+      // 向西南弯曲段 → Logan Motorway交汇
+      [-27.6503,152.9315],[-27.6625,152.9204],[-27.6644,152.9186],
+      [-27.6669,152.9163],[-27.6710,152.9113],[-27.6720,152.9101],
+      // 西南段 → 近Ipswich
+      [-27.6748,152.9003],[-27.6742,152.8978],[-27.6742,152.8906],
+      [-27.6716,152.8863],[-27.6751,152.8733],[-27.6765,152.8640],
+      [-27.6751,152.8570]
+    ], hw).addTo(leafletMap);
+    L.marker([-27.570, 152.938], {icon: hwLabel('A5','Centenary Highway')}).addTo(leafletMap);
+
+    // Logan Motorway — Centenary Hwy → Pacific Motorway (OSM-traced)
+    L.polyline([
+      [-27.6073,152.9123],[-27.6130,152.9330],[-27.6245,152.9406],
+      [-27.6322,152.9536],[-27.6371,152.9766],[-27.6422,153.0150],
+      [-27.6471,153.0421],[-27.6480,153.0572],[-27.6543,153.0736],
+      [-27.6610,153.0953],[-27.6658,153.1449],[-27.6802,153.1700],
+      [-27.6909,153.1922]
+    ], hw).addTo(leafletMap);
+    L.marker([-27.644, 153.030], {icon: hwLabel('Logan','Logan Motorway')}).addTo(leafletMap);
+
+    // Pacific Motorway (M1) — Brisbane ↔ Gold Coast (OSM-traced)
+    L.polyline([
+      [-27.4831,153.0311],[-27.5001,153.0400],[-27.5176,153.0496],
+      [-27.5420,153.0605],[-27.5699,153.0898],[-27.6263,153.1294],
+      [-27.6652,153.1735],[-27.6946,153.1942],[-27.7224,153.2171],
+      [-27.7906,153.2588],[-27.8676,153.3127],[-27.9007,153.3151],
+      [-27.9364,153.3359],[-27.9816,153.3418],[-28.0079,153.3432],
+      [-28.0536,153.3571],[-28.0831,153.3762],[-28.1007,153.4023]
+    ], hw).addTo(leafletMap);
+    L.marker([-27.618, 153.118], {icon: hwLabel('M1','Pacific Motorway')}).addTo(leafletMap);
+  }
+
+  // Location slide index = 10 (0-based)
+  const LOC_SLIDE_IDX = 10;
+
+  function update() {
+    const dots = dotsEl.querySelectorAll('.dot');
+    slides.forEach((s, i) => {
+      s.classList.remove('active', 'exiting');
+      dots[i].classList.remove('active');
+    });
+    slides[current].classList.add('active');
+    dots[current].classList.add('active');
+    document.getElementById('counter').textContent =
+      String(current + 1).padStart(2, '0') + ' / ' + String(total).padStart(2, '0');
+    document.getElementById('progressBar').style.width = ((current + 1) / total * 100) + '%';
+    if (current === INTRO_SLIDE_IDX) {
+      setTimeout(() => { initIntroMap(); if (introMap) introMap.invalidateSize(); }, 100);
+    }
+    if (current === LOC_SLIDE_IDX) {
+      setTimeout(() => { initLocMap(); if (leafletMap) leafletMap.invalidateSize(); }, 100);
+    }
+  }
+
+  function goTo(n) {
+    if (n === current) return;
+    const prev = current;
+    slides[prev].classList.add('exiting');
+    setTimeout(() => slides[prev].classList.remove('exiting'), 650);
+    current = (n + total) % total;
+    update();
+  }
+
+  document.getElementById('next').addEventListener('click', () => goTo(current + 1));
+  document.getElementById('prev').addEventListener('click', () => goTo(current - 1));
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') goTo(current + 1);
+    if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')   goTo(current - 1);
+  });
+
+  // Touch support
+  let tx = 0;
+  document.addEventListener('touchstart', e => tx = e.touches[0].clientX, {passive:true});
+  document.addEventListener('touchend', e => {
+    const dx = e.changedTouches[0].clientX - tx;
+    if (Math.abs(dx) > 50) goTo(dx < 0 ? current + 1 : current - 1);
+  }, {passive:true});
+
+  // Scale stage to fit viewport
+  function scaleStage() {
+    const s = document.getElementById('stage');
+    const scaleX = window.innerWidth / 1440;
+    const scaleY = window.innerHeight / 810;
+    const scale = Math.min(scaleX, scaleY);
+    s.style.transform = `scale(${scale})`;
+  }
+  window.addEventListener('resize', scaleStage);
+  scaleStage();
+
+  update();
+</script>
+</body>
+</html>
